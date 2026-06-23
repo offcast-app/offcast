@@ -162,19 +162,28 @@ title         TEXT NOT NULL
 thumbnailUrl  TEXT
 durationSec   INTEGER
 publishedAt   INTEGER               # Unix timestamp
-downloadPath  TEXT                  # null이면 미다운로드
+audioPath     TEXT                  # 오디오 전용 파일 경로 (기본 다운로드)
+videoPath     TEXT                  # 480p 영상 파일 경로 (선택적 다운로드)
+downloadMode  TEXT DEFAULT 'none'   # 'none' | 'audio' | 'video_480p'
 downloadedAt  INTEGER
 playbackPositionSec INTEGER DEFAULT 0
 isPlayed      INTEGER DEFAULT 0
 fileSizeBytes INTEGER
 ```
 
+> **다운로드 모드 설계 원칙**
+> - `audio` (기본): `yt-dlp -f bestaudio -x --audio-format opus` → ffmpeg 불필요, ~30MB/30분
+> - `video_480p` (선택): `yt-dlp -f best[height<=480]` → ffmpeg 불필요, ~250MB/30분
+> - 두 모드 모두 ffmpeg 번들 **불필요** → APK 크기 ~20~25MB 유지
+
 ---
 
 ## Phase 2: yt-dlp 바이너리 연동
 
 ### 목표
-yt-dlp Android ARM 바이너리를 앱에 번들하고, Dart에서 실행하여 영상 다운로드
+yt-dlp Android ARM 바이너리를 앱에 번들하고, Dart에서 실행하여 **오디오(기본) 또는 480p 영상(선택)** 다운로드
+
+> **ffmpeg 번들 없음**: 두 모드 모두 단일 스트림이므로 ffmpeg 병합 불필요. APK 크기 ~20~25MB 유지.
 
 ### 구현 항목
 
@@ -187,7 +196,9 @@ yt-dlp Android ARM 바이너리를 앱에 번들하고, Dart에서 실행하여 
 // core/constants.dart
 class AppConstants {
   static const ytDlpAssetPath = 'assets/binaries/yt-dlp';
-  static const maxVideoHeight = 720; // 720p 이하만 다운로드
+  // 다운로드 모드
+  static const maxVideoHeight = 480;   // 영상 선택 시 480p 이하 (ffmpeg 불필요)
+  static const defaultAudioFormat = 'opus'; // 기본 오디오 포맷
 }
 ```
 
@@ -202,15 +213,32 @@ Future<void> initialize() async {
   // chmod +x 실행
 }
 
-// 2. 단일 영상 다운로드
-Future<DownloadResult> downloadVideo({
+// 2a. 오디오 전용 다운로드 (기본 동작, ffmpeg 불필요)
+Future<DownloadResult> downloadAudio({
   required String videoId,
   required String outputDir,
-  int maxHeight = 720,
 }) async {
   // yt-dlp 실행 인수:
-  // [ytdlpPath, videoUrl, '-f', 'bestvideo[height<=720]+bestaudio/best[height<=720]',
-  //  '--merge-output-format', 'mp4', '-o', outputPath, '--no-playlist']
+  // [ytdlpPath, videoUrl,
+  //  '-f', 'bestaudio',
+  //  '-x', '--audio-format', 'opus',
+  //  '-o', outputPath,
+  //  '--no-playlist']
+  // 결과 파일: {videoId}.opus (~30MB / 30분 기준)
+}
+
+// 2b. 480p 영상 다운로드 (선택적, ffmpeg 불필요)
+Future<DownloadResult> downloadVideo480p({
+  required String videoId,
+  required String outputDir,
+}) async {
+  // yt-dlp 실행 인수:
+  // [ytdlpPath, videoUrl,
+  //  '-f', 'best[height<=480]',
+  //  '-o', outputPath,
+  //  '--no-playlist']
+  // 결과 파일: {videoId}.mp4 (~250MB / 30분 기준)
+  // 주의: 480p는 영상+오디오 합본 스트림이 존재하므로 ffmpeg 불필요
 }
 
 // 3. 채널 최신 영상 ID 목록 가져오기 (다운로드 없이 메타데이터만)
@@ -316,14 +344,22 @@ Constraints constraints = Constraints(
 
 ---
 
-## Phase 5: 오디오 플레이어
+## Phase 5: 미디어 플레이어
 
 ### 목표
-팟캐스트급 청취 경험 구현
+팟캐스트급 청취 경험 구현 (오디오 기본, 영상 선택적 지원)
 
 ### 구현 항목
 
-#### AudioHandler (audio_service 기반)
+#### 재생 모드 분기
+```dart
+// episode.downloadMode에 따라 플레이어 분기
+// - 'audio'      → just_audio + audio_service (백그라운드 재생 지원)
+// - 'video_480p' → video_player 패키지 (풀스크린 영상 재생)
+//                  단, 화면 꺼지면 오디오만 계속 재생 (audio_service 연동)
+```
+
+#### AudioHandler (audio_service 기반, 오디오 모드)
 ```dart
 // 구현할 기능:
 // - 재생/일시정지/다음/이전
@@ -336,14 +372,24 @@ Constraints constraints = Constraints(
 // - 잠금화면/알림 컨트롤 (audio_service가 자동 처리)
 ```
 
-#### PlayerScreen UI 요소
+#### PlayerScreen UI 요소 (오디오 모드)
 ```
 [채널명] [에피소드 제목]
 [썸네일 이미지]
 [현재시간 ──────●────── 전체시간]
 [◀10s] [⏮] [▶/⏸] [⏭] [30s▶]
 [배속: 1.5x ▼]  [슬립타이머 🌙]
+[🎬 영상으로 보기]          ← 480p 다운로드 트리거 (미다운 시 다운 후 재생)
 [에피소드 목록 ↕]
+```
+
+#### 영상으로 보기 흐름
+```
+[🎬 영상으로 보기] 탭
+  ├── video_480p 이미 다운로드됨 → VideoPlayerScreen 이동
+  └── 미다운로드 → "480p 영상 다운로드 후 재생할까요?" 확인 다이얼로그
+        ├── 확인 → downloadVideo480p() 실행 → 완료 후 VideoPlayerScreen
+        └── 취소 → 현재 오디오 재생 유지
 ```
 
 ---
@@ -412,3 +458,5 @@ Phase 7: UI/UX 정리                        (폴리싱)
 2. **실행 권한**: `Process.run('chmod', ['+x', ytdlpPath])` 먼저 실행.
 3. **Android 12+ 배터리 최적화**: WorkManager가 자동 처리하지만, 사용자에게 배터리 최적화 예외 추가 안내 UI 필요.
 4. **파일 저장 경로**: Android 10+는 앱 전용 저장소 사용 (`getExternalStorageDirectory()`는 deprecated).
+5. **ffmpeg 불필요**: 오디오(`bestaudio -x`) 및 480p 영상(`best[height<=480]`) 모두 단일 스트림 다운로드이므로 ffmpeg 번들 없이 동작. 향후 720p+ 지원 시에는 ffmpeg 번들 필요.
+6. **480p 스트림 가용성**: YouTube가 일부 영상에서 480p 합본 스트림을 제공하지 않을 수 있음. 이 경우 `best[height<=480]` 대신 `worst` fallback 처리 필요.

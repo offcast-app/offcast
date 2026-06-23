@@ -10,11 +10,12 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/lucas-distill/offcast/releases"><img src="https://img.shields.io/github/v/release/lucas-distill/offcast?style=flat-square&label=Download%20APK" alt="Download APK"/></a>
-  <a href="https://github.com/lucas-distill/offcast/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License: MIT"/></a>
-  <a href="https://github.com/lucas-distill/offcast/stargazers"><img src="https://img.shields.io/github/stars/lucas-distill/offcast?style=flat-square" alt="Stars"/></a>
+  <a href="https://github.com/offcast-app/offcast/releases"><img src="https://img.shields.io/github/v/release/offcast-app/offcast?style=flat-square&label=Download%20APK" alt="Download APK"/></a>
+  <a href="https://github.com/offcast-app/offcast/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License: MIT"/></a>
+  <a href="https://github.com/offcast-app/offcast/stargazers"><img src="https://img.shields.io/github/stars/offcast-app/offcast?style=flat-square" alt="Stars"/></a>
   <img src="https://img.shields.io/badge/platform-Android-3DDC84?style=flat-square&logo=android" alt="Android"/>
   <img src="https://img.shields.io/badge/built%20with-Flutter-54C5F8?style=flat-square&logo=flutter" alt="Flutter"/>
+  <a href="docs/PRODUCT_SPEC.md"><img src="https://img.shields.io/badge/docs-Product%20Spec-orange?style=flat-square" alt="Product Spec"/></a>
 </p>
 
 ---

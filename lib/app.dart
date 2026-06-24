@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'features/downloader/ytdlp_test_screen.dart';
 
 final GoRouter _router = GoRouter(
   routes: <RouteBase>[
     GoRoute(
       path: '/',
       builder: (BuildContext context, GoRouterState state) {
-        return const PlaceholderScreen();
+        return const YtDlpTestScreen();
       },
     ),
   ],
